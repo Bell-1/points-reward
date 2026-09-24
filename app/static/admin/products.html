@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>商品管理 - 积分奖励平台</title>
+  <link rel="stylesheet" href="/static/css/admin.css">
+</head>
+<body>
+  <div class="admin-layout" id="layout"></div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/admin.js"></script>
+  <script>
+    let filterStatus = '';
+
+    async function init() {
+      if (!await checkAdminAuth()) return;
+      document.getElementById('layout').innerHTML = renderSidebar('products') + `
+        <div class="main">
+          <div class="page-header">
+            <h1>商品管理</h1>
+            <button class="btn btn--primary" onclick="openCreate()">+ 添加商品</button>
+          </div>
+          <div class="filter-bar">
+            <select onchange="filterStatus=this.value; loadProducts()">
+              <option value="">全部状态</option>
+              <option value="on_shelf">上架</option>
+              <option value="off_shelf">下架</option>
+            </select>
+          </div>
+          <div class="table" id="productTable"></div>
+        </div>`;
+      await loadProducts();
+    }
+
+    async function loadProducts() {
+      const params = {};
+      if (filterStatus) params.status = filterStatus;
+      const res = await API.adminGetProducts(params);
+      if (res.code !== 0) { showToast(res.msg); return; }
+
+      const products = res.data.list || [];
+      const table = document.getElementById('productTable');
+
+      if (products.length === 0) {
+        table.innerHTML = `<div class="empty-state"><div class="empty-state__icon">🎁</div><div>暂无商品</div></div>`;
+        return;
+      }
+
+      table.innerHTML = `<table class="data-table">
+        <thead><tr><th>商品</th><th>所需积分</th><th>库存</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody>
+          ${products.map(p => {
+            const img = p.imageUrl ? `<img src="${p.imageUrl}" style="width:32px;height:32px;border-radius:6px;vertical-align:middle;">` : '🎁';
+            return `<tr>
+              <td>${img} ${p.productName}</td>
+              <td>${p.requiredPoints}</td>
+              <td>${p.stock}</td>
+              <td><span class="tag ${p.status==='on_shelf'?'tag--success':'tag--default'}">${adminProductStatus[p.status]}</span></td>
+              <td>
+                <button class="btn btn--sm" onclick="openEdit(${p.id})">编辑</button>
+                <button class="btn btn--sm" onclick="toggleStatus(${p.id}, '${p.status}')">${p.status==='on_shelf'?'下架':'上架'}</button>
+                <button class="btn btn--sm btn--danger" onclick="deleteProduct(${p.id}, '${p.productName}')">删除</button>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+    }
+
+    function openCreate() {
+      const overlay = showModal('添加商品', `
+        <div class="form-group">
+          <label class="form-label">商品名称 <span class="req">*</span></label>
+          <input class="form-input" id="productName" placeholder="2-50字符">
+        </div>
+        <div class="form-group">
+          <label class="form-label">商品图片</label>
+          <div class="upload-area" id="uploadArea" onclick="document.getElementById('imageFile').click()">
+            <div style="font-size:32px;">📷</div>
+            <div style="font-size:13px; margin-top:4px;">点击上传图片 (JPG/PNG, ≤2MB)</div>
+          </div>
+          <input type="file" id="imageFile" accept="image/jpeg,image/png" style="display:none" onchange="uploadImage(this)">
+          <input type="hidden" id="imageUrl" value="">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">所需积分 <span class="req">*</span></label>
+            <input class="form-input" type="number" id="requiredPoints" placeholder="≥1" min="1">
+          </div>
+          <div class="form-group">
+            <label class="form-label">库存数量 <span class="req">*</span></label>
+            <input class="form-input" type="number" id="stock" placeholder="≥0" min="0" value="0">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">上架状态</label>
+          <select class="form-select" id="productStatus">
+            <option value="on_shelf">上架</option>
+            <option value="off_shelf">下架</option>
+          </select>
+        </div>
+      `);
+      overlay.querySelector('#modal-save-btn').onclick = submitCreate;
+    }
+
+    async function uploadImage(input) {
+      const file = input.files[0];
+      if (!file) return;
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await API.adminUploadImage(formData);
+      if (res.code === 0) {
+        document.getElementById('imageUrl').value = res.data.url;
+        const area = document.getElementById('uploadArea');
+        area.innerHTML = `<img src="${res.data.url}" alt="预览">`;
+      } else {
+        showToast(res.msg);
+      }
+    }
+
+    async function submitCreate() {
+      const data = {
+        productName: document.getElementById('productName').value.trim(),
+        requiredPoints: parseInt(document.getElementById('requiredPoints').value),
+        stock: parseInt(document.getElementById('stock').value),
+        status: document.getElementById('productStatus').value,
+        imageUrl: document.getElementById('imageUrl').value || null,
+        sortOrder: 0,
+      };
+      if (!data.productName || data.productName.length < 2) { showToast('商品名称至少2个字符'); return; }
+      if (!data.requiredPoints || data.requiredPoints < 1) { showToast('所需积分≥1'); return; }
+
+      const res = await API.adminCreateProduct(data);
+      if (res.code === 0) {
+        showToast(res.msg);
+        closeModal();
+        await loadProducts();
+      } else {
+        showToast(res.msg);
+      }
+    }
+
+    async function openEdit(productId) {
+      const res = await API.adminGetProducts();
+      if (res.code !== 0) { showToast(res.msg); return; }
+      const p = res.data.list.find(x => x.id === productId);
+      if (!p) { showToast('商品不存在'); return; }
+
+      const imgPreview = p.imageUrl ? `<img src="${p.imageUrl}" alt="预览">` : `<div style="font-size:32px;">📷</div><div style="font-size:13px;">点击上传图片</div>`;
+
+      const overlay = showModal('编辑商品', `
+        <div class="form-group">
+          <label class="form-label">商品名称 <span class="req">*</span></label>
+          <input class="form-input" id="editProductName" value="${p.productName}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">商品图片</label>
+          <div class="upload-area" id="editUploadArea" onclick="document.getElementById('editImageFile').click()">
+            ${imgPreview}
+          </div>
+          <input type="file" id="editImageFile" accept="image/jpeg,image/png" style="display:none" onchange="uploadEditImage(this)">
+          <input type="hidden" id="editImageUrl" value="${p.imageUrl || ''}">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">所需积分 <span class="req">*</span></label>
+            <input class="form-input" type="number" id="editRequiredPoints" value="${p.requiredPoints}" min="1">
+          </div>
+          <div class="form-group">
+            <label class="form-label">库存数量 <span class="req">*</span></label>
+            <input class="form-input" type="number" id="editStock" value="${p.stock}" min="0">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">上架状态</label>
+          <select class="form-select" id="editProductStatus">
+            <option value="on_shelf" ${p.status==='on_shelf'?'selected':''}>上架</option>
+            <option value="off_shelf" ${p.status==='off_shelf'?'selected':''}>下架</option>
+          </select>
+        </div>
+      `);
+      overlay.querySelector('#modal-save-btn').onclick = () => submitEdit(productId);
+    }
+
+    async function uploadEditImage(input) {
+      const file = input.files[0];
+      if (!file) return;
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await API.adminUploadImage(formData);
+      if (res.code === 0) {
+        document.getElementById('editImageUrl').value = res.data.url;
+        document.getElementById('editUploadArea').innerHTML = `<img src="${res.data.url}" alt="预览">`;
+      } else {
+        showToast(res.msg);
+      }
+    }
+
+    async function submitEdit(productId) {
+      const data = {
+        productName: document.getElementById('editProductName').value.trim(),
+        requiredPoints: parseInt(document.getElementById('editRequiredPoints').value),
+        stock: parseInt(document.getElementById('editStock').value),
+        status: document.getElementById('editProductStatus').value,
+        imageUrl: document.getElementById('editImageUrl').value || null,
+      };
+      if (!data.productName || data.productName.length < 2) { showToast('商品名称至少2个字符'); return; }
+
+      const res = await API.adminUpdateProduct(productId, data);
+      if (res.code === 0) {
+        showToast(res.msg);
+        closeModal();
+        await loadProducts();
+      } else {
+        showToast(res.msg);
+      }
+    }
+
+    async function toggleStatus(productId, currentStatus) {
+      const newStatus = currentStatus === 'on_shelf' ? 'off_shelf' : 'on_shelf';
+      const res = await API.adminUpdateProduct(productId, { status: newStatus });
+      if (res.code === 0) {
+        showToast('状态已更新');
+        await loadProducts();
+      } else {
+        showToast(res.msg);
+      }
+    }
+
+    function deleteProduct(productId, name) {
+      showConfirm('删除商品', `确定要删除商品"${name}"吗？<br>已有兑换记录不受影响。`, async () => {
+        const res = await API.adminDeleteProduct(productId);
+        if (res.code === 0) {
+          showToast(res.msg);
+          await loadProducts();
+        } else {
+          showToast(res.msg);
+        }
+      });
+    }
+
+    init();
+  </script>
+</body>
+</html>

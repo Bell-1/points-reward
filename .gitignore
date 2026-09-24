@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+*.db
+*.sqlite
+*.sqlite3
+
+# Node
+node_modules/
+.pnpm-store/
+dist/
+.env
+.env.local
+
+# Uploads
+uploads/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+.dockerignore
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Lock files (we use pnpm)
+# package-lock.json
+# pnpm-lock.yaml (uncomment if needed)

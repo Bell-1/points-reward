@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>积分奖励平台 - 管理后台</title>
+  <script src="/static/js/api.js"></script>
+</head>
+<body>
+  <script>
+    if (API.isLoggedIn() && API.getRole() === 'admin') {
+      window.location.href = '/admin/stats.html';
+    } else {
+      window.location.href = '/admin/login.html';
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>孩子管理 - 积分奖励平台</title>
+  <link rel="stylesheet" href="/static/css/admin.css">
+</head>
+<body>
+  <div class="admin-layout" id="layout"></div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/admin.js"></script>
+  <script>
+    async function init() {
+      if (!await checkAdminAuth()) return;
+      document.getElementById('layout').innerHTML = renderSidebar('children') + `
+        <div class="main">
+          <div class="page-header">
+            <h1>孩子管理</h1>
+            <button class="btn btn--primary" onclick="openCreate()">+ 添加孩子</button>
+          </div>
+          <div class="child-grid" id="childGrid"></div>
+        </div>`;
+      await loadChildren();
+    }
+
+    async function loadChildren() {
+      const res = await API.adminGetChildren();
+      if (res.code !== 0) { showToast(res.msg); return; }
+
+      const children = res.data || [];
+      const grid = document.getElementById('childGrid');
+
+      if (children.length === 0) {
+        grid.innerHTML = `<div class="empty-state"><div class="empty-state__icon">👶</div><div>暂无孩子账户</div></div>`;
+        return;
+      }
+
+      grid.innerHTML = children.map(c => `
+        <div class="child-card">
+          <div class="child-card__avatar">${c.avatar || '🧒'}</div>
+          <div class="child-card__name">${c.nickname}</div>
+          <div class="child-card__age">${c.age ? c.age + '岁' : '—'}</div>
+          <div class="child-card__balance">${c.balance} 积分</div>
+          <div class="child-card__actions">
+            <button class="btn btn--sm btn--primary" onclick="openAdjust(${c.id}, '${c.nickname}', ${c.balance})">调整积分</button>
+            <button class="btn btn--sm" onclick="openEdit(${c.id})">编辑</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function openCreate() {
+      const avatars = childAvatars.map(a =>
+        `<div class="icon-picker__item" onclick="selectAvatar(this)">${a}</div>`
+      ).join('');
+      const overlay = showModal('添加孩子', `
+        <div class="form-group">
+          <label class="form-label">昵称 <span class="req">*</span></label>
+          <input class="form-input" id="nickname" placeholder="1-20字符">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">年龄</label>
+            <input class="form-input" type="number" id="age" placeholder="3-18" min="3" max="18">
+          </div>
+          <div class="form-group">
+            <label class="form-label">PIN 码 <span class="req">*</span></label>
+            <input class="form-input" type="password" id="pin" placeholder="4-8位" maxlength="8">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">头像</label>
+          <div class="icon-picker" id="avatarPicker">${avatars}</div>
+          <input type="hidden" id="avatar" value="">
+        </div>
+      `);
+      overlay.querySelector('#modal-save-btn').onclick = submitCreate;
+    }
+
+    async function submitCreate() {
+      const data = {
+        nickname: document.getElementById('nickname').value.trim(),
+        age: parseInt(document.getElementById('age').value) || null,
+        pin: document.getElementById('pin').value.trim(),
+        avatar: document.getElementById('avatar').value || null,
+      };
+      if (!data.nickname) { showToast('请输入昵称'); return; }
+      if (!data.pin || data.pin.length < 4) { showToast('PIN码4-8位'); return; }
+
+      const res = await API.adminCreateChild(data);
+      if (res.code === 0) {
+        showToast(res.msg);
+        closeModal();
+        await loadChildren();
+      } else {
+        showToast(res.msg);
+      }
+    }
+
+    async function openEdit(childId) {
+      const res = await API.adminGetChildren();
+      if (res.code !== 0) { showToast(res.msg); return; }
+      const c = res.data.find(x => x.id === childId);
+      if (!c) { showToast('孩子不存在'); return; }
+
+      const avatars = childAvatars.map(a => {
+        const sel = a === c.avatar ? 'selected' : '';
+        return `<div class="icon-picker__item ${sel}" onclick="selectAvatar(this)">${a}</div>`;
+      }).join('');
+
+      const overlay = showModal('编辑孩子信息', `
+        <div class="form-group">
+          <label class="form-label">昵称 <span class="req">*</span></label>
+          <input class="form-input" id="editNickname" value="${c.nickname}">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">年龄</label>
+            <input class="form-input" type="number" id="editAge" value="${c.age || ''}" min="3" max="18">
+          </div>
+          <div class="form-group">
+            <label class="form-label">PIN 码</label>
+            <input class="form-input" type="password" id="editPin" placeholder="留空不修改" maxlength="8">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">头像</label>
+          <div class="icon-picker" id="avatarPicker">${avatars}</div>
+          <input type="hidden" id="editAvatar" value="${c.avatar || ''}">
+        </div>
+      `);
+      overlay.querySelector('#modal-save-btn').onclick = () => submitEdit(childId);
+    }
+
+    async function submitEdit(childId) {
+      const data = {
+        nickname: document.getElementById('editNickname').value.trim(),
+        age: parseInt(document.getElementById('editAge').value) || null,
+        avatar: document.getElementById('editAvatar').value || null,
+      };
+      const pin = document.getElementById('editPin').value.trim();
+      if (pin) data.pin = pin;
+      if (!data.nickname) { showToast('请输入昵称'); return; }
+
+      const res = await API.adminUpdateChild(childId, data);
+      if (res.code === 0) {
+        showToast(res.msg);
+        closeModal();
+        await loadChildren();
+      } else {
+        showToast(res.msg);
+      }
+    }
+
+    function openAdjust(childId, nickname, balance) {
+      const overlay = showModal('调整积分 - ' + nickname, `
+        <div style="margin-bottom:16px; padding:12px; background:#f5f7fa; border-radius:8px;">
+          当前积分余额：<strong style="color:var(--brand); font-size:18px;">${balance}</strong> 积分
+        </div>
+        <div class="form-group">
+          <label class="form-label">调整方式</label>
+          <div style="display:flex; gap:16px;">
+            <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+              <input type="radio" name="adjustType" value="add" checked> 增加
+            </label>
+            <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+              <input type="radio" name="adjustType" value="subtract"> 扣减
+            </label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">积分数量 <span class="req">*</span></label>
+          <input class="form-input" type="number" id="adjustAmount" placeholder="≥1" min="1" value="10" oninput="previewAdjust(${balance})">
+        </div>
+        <div class="form-group">
+          <label class="form-label">调整原因 <span class="req">*</span></label>
+          <input class="form-input" id="adjustReason" placeholder="请输入原因">
+        </div>
+        <div id="adjustPreview" style="font-size:13px; color:var(--text-muted);">
+          调整后积分：<strong style="color:var(--brand);">${balance + 10}</strong> 积分
+        </div>
+      `);
+      overlay.querySelector('#modal-save-btn').onclick = () => submitAdjust(childId, balance);
+      overlay.querySelectorAll('input[name=adjustType]').forEach(r => {
+        r.onchange = () => previewAdjust(balance);
+      });
+    }
+
+    function previewAdjust(balance) {
+      const type = document.querySelector('input[name=adjustType]:checked').value;
+      const amount = parseInt(document.getElementById('adjustAmount').value) || 0;
+      const after = type === 'add' ? balance + amount : balance - amount;
+      document.getElementById('adjustPreview').innerHTML =
+        `调整后积分：<strong style="color:var(--brand);">${after}</strong> 积分`;
+    }
+
+    async function submitAdjust(childId, balance) {
+      const adjustType = document.querySelector('input[name=adjustType]:checked').value;
+      const amount = parseInt(document.getElementById('adjustAmount').value);
+      const reason = document.getElementById('adjustReason').value.trim();
+      if (!amount || amount < 1) { showToast('积分数量≥1'); return; }
+      if (!reason) { showToast('请输入调整原因'); return; }
+
+      const res = await API.adminAdjustPoints(childId, { adjustType, amount, reason });
+      if (res.code === 0) {
+        showToast(res.msg);
+        closeModal();
+        await loadChildren();
+      } else {
+        showToast(res.msg);
+      }
+    }
+
+    function selectAvatar(el) {
+      el.parentElement.querySelectorAll('.icon-picker__item').forEach(e => e.classList.remove('selected'));
+      el.classList.add('selected');
+      const avatar = el.textContent.trim();
+      const hidden = el.parentElement.querySelector('input[type=hidden]');
+      if (hidden) hidden.value = avatar;
+    }
+
+    init();
+  </script>
+</body>
+</html>

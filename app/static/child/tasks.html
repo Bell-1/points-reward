@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>任务 - 积分奖励平台</title>
+  <link rel="stylesheet" href="/static/css/child.css">
+</head>
+<body>
+  <div class="navbar">
+    <span class="navbar__title">⭐ 积分任务</span>
+    <div class="navbar__right">
+      <span id="navBalance" style="font-weight:700; color:var(--brand);">0</span>
+      <span style="font-size:13px; color:var(--text-muted);">积分</span>
+    </div>
+  </div>
+
+  <div class="page-content">
+    <div class="balance-box">
+      <span class="balance-box__icon">⭐</span>
+      <div>
+        <div class="balance-box__value" id="balanceValue">0</div>
+        <div class="balance-box__label">我的积分</div>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-type="daily" onclick="switchTab('daily')">📅 日常任务</button>
+      <button class="tab" data-type="weekly" onclick="switchTab('weekly')">📆 周任务</button>
+      <button class="tab" data-type="monthly" onclick="switchTab('monthly')">🗓️ 月度任务</button>
+    </div>
+
+    <div id="taskList">
+      <div class="empty-state">
+        <div class="empty-state__icon">⏳</div>
+        <div class="empty-state__text">加载中...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabbar" id="tabbar"></div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/child.js"></script>
+  <script>
+    let currentType = 'daily';
+    let childBalance = 0;
+
+    async function init() {
+      if (!await checkChildAuth()) return;
+      document.getElementById('tabbar').innerHTML = renderTabbar('tasks');
+      await loadBalance();
+      await loadTasks();
+    }
+
+    async function loadBalance() {
+      const res = await API.getBalance();
+      if (res.code === 0) {
+        childBalance = res.data.balance;
+        document.getElementById('balanceValue').textContent = childBalance;
+        document.getElementById('navBalance').textContent = childBalance;
+      }
+    }
+
+    async function loadTasks() {
+      const res = await API.getTasks(currentType);
+      if (res.code !== 0) {
+        showToast(res.msg);
+        return;
+      }
+      const tasks = res.data || [];
+      const list = document.getElementById('taskList');
+
+      if (tasks.length === 0) {
+        list.innerHTML = `<div class="empty-state">
+          <div class="empty-state__icon">🎉</div>
+          <div class="empty-state__text">暂无任务</div>
+        </div>`;
+        return;
+      }
+
+      list.innerHTML = tasks.map(t => `
+        <div class="task-card">
+          <div class="task-card__icon">${t.icon || '⭐'}</div>
+          <div class="task-card__body">
+            <div class="task-card__title">${t.taskName}</div>
+            <div class="task-card__sub">${taskTypeLabels[t.taskType] || ''}</div>
+          </div>
+          <div class="task-card__points">+${t.rewardPoints}</div>
+          ${t.isCompleted
+            ? `<span class="task-card__status">✅ 已完成</span>`
+            : `<button class="btn btn--primary" onclick="completeTask(${t.id})">完成</button>`
+          }
+        </div>
+      `).join('');
+    }
+
+    function switchTab(type) {
+      currentType = type;
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelector(`.tab[data-type="${type}"]`).classList.add('active');
+      loadTasks();
+    }
+
+    async function completeTask(taskId) {
+      const res = await API.completeTask(taskId);
+      if (res.code === 0) {
+        showToast(`🎉 ${res.msg}！+${res.data.pointsEarned}积分`);
+        childBalance = res.data.currentBalance;
+        document.getElementById('balanceValue').textContent = childBalance;
+        document.getElementById('navBalance').textContent = childBalance;
+        await loadTasks();
+      } else {
+        showToast(res.msg);
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

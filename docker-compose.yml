@@ -1,0 +1,28 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=sqlite:///./points_reward.db
+      - SECRET_KEY=points-reward-secret-key-change-in-production
+    working_dir: /app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "7888:7888"
+    volumes:
+      - ./frontend:/app
+    environment:
+      - VITE_API_BASE=/api
+      - VITE_PROXY_TARGET=http://backend:8000
+    working_dir: /app
+    command: pnpm dev --host

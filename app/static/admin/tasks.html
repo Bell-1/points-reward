@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>任务管理 - 积分奖励平台</title>
+  <link rel="stylesheet" href="/static/css/admin.css">
+</head>
+<body>
+  <div class="admin-layout" id="layout"></div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/admin.js"></script>
+  <script>
+    let filterType = '';
+    let filterActive = '';
+
+    async function init() {
+      if (!await checkAdminAuth()) return;
+      document.getElementById('layout').innerHTML = renderSidebar('tasks') + `
+        <div class="main">
+          <div class="page-header">
+            <h1>任务管理</h1>
+            <button class="btn btn--primary" onclick="openCreate()">+ 新增任务</button>
+          </div>
+          <div class="filter-bar">
+            <select onchange="filterType=this.value; loadTasks()" id="filterType">
+              <option value="">全部类型</option>
+              <option value="daily">日常任务</option>
+              <option value="weekly">周任务</option>
+              <option value="monthly">月度任务</option>
+            </select>
+            <select onchange="filterActive=this.value; loadTasks()" id="filterActive">
+              <option value="">全部状态</option>
+              <option value="true">启用</option>
+              <option value="false">停用</option>
+            </select>
+          </div>
+          <div class="table" id="taskTable"></div>
+        </div>`;
+      await loadTasks();
+    }
+
+    async function loadTasks() {
+      const params = {};
+      if (filterType) params.taskType = filterType;
+      if (filterActive) params.isActive = filterActive;
+      const res = await API.adminGetTasks(params);
+      if (res.code !== 0) { showToast(res.msg); return; }
+
+      const tasks = res.data.list || [];
+      const table = document.getElementById('taskTable');
+
+      if (tasks.length === 0) {
+        table.innerHTML = `<div class="empty-state"><div class="empty-state__icon">📋</div><div>暂无任务</div></div>`;
+        return;
+      }
+
+      table.innerHTML = `<table class="data-table">
+        <thead><tr><th>任务名称</th><th>类型</th><th>积分</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody>
+          ${tasks.map(t => `<tr>
+            <td>${t.icon || ''} ${t.taskName}</td>
+            <td><span class="tag ${t.taskType === 'daily' ? 'tag--brand' : t.taskType === 'weekly' ? 'tag--info' : 'tag--warning'}">${adminTaskTypes[t.taskType]}</span></td>
+            <td>${t.rewardPoints}</td>
+            <td><span class="tag ${t.isActive ? 'tag--success' : 'tag--default'}">${t.isActive ? '启用' : '停用'}</span></td>
+            <td>
+              <button class="btn btn--sm" onclick="openEdit(${t.id})">编辑</button>
+              <button class="btn btn--sm btn--danger" onclick="deleteTask(${t.id}, '${t.taskName}')">删除</button>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+    }
+
+    function openCreate() {
+      const icons = taskIcons.map(ic => `<div class="icon-picker__item" onclick="selectIcon(this)">${ic}</div>`).join('');
+      const overlay = showModal('新增任务', `
+        <div class="form-group">
+          <label class="form-label">任务名称 <span class="req">*</span></label>
+          <input class="form-input" id="taskName" placeholder="2-30字符">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">任务类型 <span class="req">*</span></label>
+            <select class="form-select" id="taskType">
+              <option value="daily">日常任务（每日重置）</option>
+              <option value="weekly">周任务（每周重置）</option>
+              <option value="monthly">月度任务（每月重置）</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">积分奖励 <span class="req">*</span></label>
+            <input class="form-input" type="number" id="rewardPoints" placeholder="1-1000" min="1" max="1000">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">任务图标</label>
+          <div class="icon-picker" id="iconPicker">${icons}</div>
+          <input type="hidden" id="taskIcon" value="">
+        </div>
+        <div class="form-group">
+          <label class="form-label">状态</label>
+          <select class="form-select" id="taskActive">
+            <option value="true">启用</option>
+            <option value="false">停用</option>
+          </select>
+        </div>
+      `);
+      overlay.querySelector('#modal-save-btn').onclick = submitCreate;
+    }
+
+    async function submitCreate() {
+      const data = {
+        taskName: document.getElementById('taskName').value.trim(),
+        taskType: document.getElementById('taskType').value,
+        rewardPoints: parseInt(document.getElementById('rewardPoints').value),
+        icon: document.getElementById('taskIcon').value,
+        isActive: document.getElementById('taskActive').value === 'true',
+        sortOrder: 0,
+      };
+      if (!data.taskName || data.taskName.length < 2) { showToast('任务名称至少2个字符'); return; }
+      if (!data.rewardPoints || data.rewardPoints < 1) { showToast('积分奖励1-1000'); return; }
+
+      const res = await API.adminCreateTask(data);
+      if (res.code === 0) {
+        showToast(res.msg);
+        closeModal();
+        await loadTasks();
+      } else {
+        showToast(res.msg);
+      }
+    }
+
+    async function openEdit(taskId) {
+      const res = await API.adminGetTasks();
+      if (res.code !== 0) { showToast(res.msg); return; }
+      const task = res.data.list.find(t => t.id === taskId);
+      if (!task) { showToast('任务不存在'); return; }
+
+      const icons = taskIcons.map(ic => {
+        const sel = ic === task.icon ? 'selected' : '';
+        return `<div class="icon-picker__item ${sel}" onclick="selectIcon(this)">${ic}</div>`;
+      }).join('');
+
+      const overlay = showModal('编辑任务', `
+        <div class="form-group">
+          <label class="form-label">任务名称 <span class="req">*</span></label>
+          <input class="form-input" id="editTaskName" value="${task.taskName}">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">任务类型 <span class="req">*</span></label>
+            <select class="form-select" id="editTaskType">
+              <option value="daily" ${task.taskType==='daily'?'selected':''}>日常任务</option>
+              <option value="weekly" ${task.taskType==='weekly'?'selected':''}>周任务</option>
+              <option value="monthly" ${task.taskType==='monthly'?'selected':''}>月度任务</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">积分奖励 <span class="req">*</span></label>
+            <input class="form-input" type="number" id="editRewardPoints" value="${task.rewardPoints}" min="1" max="1000">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">任务图标</label>
+          <div class="icon-picker" id="iconPicker">${icons}</div>
+          <input type="hidden" id="editTaskIcon" value="${task.icon || ''}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">状态</label>
+          <select class="form-select" id="editTaskActive">
+            <option value="true" ${task.isActive?'selected':''}>启用</option>
+            <option value="false" ${!task.isActive?'selected':''}>停用</option>
+          </select>
+        </div>
+      `);
+      overlay.querySelector('#modal-save-btn').onclick = () => submitEdit(taskId);
+    }
+
+    async function submitEdit(taskId) {
+      const data = {
+        taskName: document.getElementById('editTaskName').value.trim(),
+        taskType: document.getElementById('editTaskType').value,
+        rewardPoints: parseInt(document.getElementById('editRewardPoints').value),
+        icon: document.getElementById('editTaskIcon').value,
+        isActive: document.getElementById('editTaskActive').value === 'true',
+      };
+      if (!data.taskName || data.taskName.length < 2) { showToast('任务名称至少2个字符'); return; }
+      if (!data.rewardPoints || data.rewardPoints < 1) { showToast('积分奖励1-1000'); return; }
+
+      const res = await API.adminUpdateTask(taskId, data);
+      if (res.code === 0) {
+        showToast(res.msg);
+        closeModal();
+        await loadTasks();
+      } else {
+        showToast(res.msg);
+      }
+    }
+
+    function selectIcon(el) {
+      el.parentElement.querySelectorAll('.icon-picker__item').forEach(e => e.classList.remove('selected'));
+      el.classList.add('selected');
+      const icon = el.textContent.trim();
+      const hidden = el.parentElement.querySelector('input[type=hidden]');
+      if (hidden) hidden.value = icon;
+    }
+
+    function deleteTask(taskId, name) {
+      showConfirm('删除任务', `确定要删除任务"${name}"吗？<br>删除后孩子端将不再展示此任务，历史记录不受影响。`, async () => {
+        const res = await API.adminDeleteTask(taskId);
+        if (res.code === 0) {
+          showToast(res.msg);
+          await loadTasks();
+        } else {
+          showToast(res.msg);
+        }
+      });
+    }
+
+    init();
+  </script>
+</body>
+</html>

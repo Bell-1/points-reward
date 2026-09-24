@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>积分记录 - 积分奖励平台</title>
+  <link rel="stylesheet" href="/static/css/child.css">
+</head>
+<body>
+  <div class="navbar">
+    <span class="navbar__title">📋 积分记录</span>
+  </div>
+
+  <div class="page-content">
+    <div class="balance-box">
+      <span class="balance-box__icon">⭐</span>
+      <div>
+        <div class="balance-box__value" id="balanceValue">0</div>
+        <div class="balance-box__label">当前积分</div>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-type="earning" onclick="switchTab('earning')">📈 获取记录</button>
+      <button class="tab" data-type="spending" onclick="switchTab('spending')">📉 兑换记录</button>
+    </div>
+
+    <div id="recordList"></div>
+    <div id="loadMore" style="display:none;" class="load-more" onclick="loadMore()">加载更多...</div>
+  </div>
+
+  <div class="tabbar" id="tabbar"></div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/child.js"></script>
+  <script>
+    let currentType = 'earning';
+    let page = 1;
+    let totalPages = 1;
+
+    async function init() {
+      if (!await checkChildAuth()) return;
+      document.getElementById('tabbar').innerHTML = renderTabbar('records');
+      await loadBalance();
+      await loadRecords();
+    }
+
+    async function loadBalance() {
+      const res = await API.getBalance();
+      if (res.code === 0) {
+        document.getElementById('balanceValue').textContent = res.data.balance;
+      }
+    }
+
+    async function loadRecords() {
+      const res = await API.getPointRecords(currentType, page, 20);
+      if (res.code !== 0) { showToast(res.msg); return; }
+
+      const records = res.data.list || [];
+      const total = res.data.total;
+      totalPages = Math.ceil(total / 20);
+      const list = document.getElementById('recordList');
+
+      if (page === 1) list.innerHTML = '';
+
+      if (records.length === 0 && page === 1) {
+        list.innerHTML = `<div class="empty-state">
+          <div class="empty-state__icon">📭</div>
+          <div class="empty-state__text">暂无记录</div>
+        </div>`;
+        document.getElementById('loadMore').style.display = 'none';
+        return;
+      }
+
+      list.innerHTML += records.map(r => {
+        const isEarn = r.amount > 0;
+        const icon = r.sourceType === 'task' ? '✅' : (r.sourceType === 'redeem' ? '🎁' : '✏️');
+        return `<div class="record-item">
+          <div class="record-item__icon">${icon}</div>
+          <div class="record-item__body">
+            <div class="record-item__title">${r.sourceName}</div>
+            <div class="record-item__time">${r.createdAt} · 余额 ${r.balanceAfter}</div>
+          </div>
+          <div class="record-item__amount ${isEarn ? 'amount--earn' : 'amount--spend'}">
+            ${isEarn ? '+' : ''}${r.amount}
+          </div>
+        </div>`;
+      }).join('');
+
+      document.getElementById('loadMore').style.display = page < totalPages ? 'block' : 'none';
+    }
+
+    function switchTab(type) {
+      currentType = type;
+      page = 1;
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelector(`.tab[data-type="${type}"]`).classList.add('active');
+      loadRecords();
+    }
+
+    function loadMore() {
+      page++;
+      loadRecords();
+    }
+
+    init();
+  </script>
+</body>
+</html>

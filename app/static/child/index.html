@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>积分奖励平台 - 孩子端</title>
+  <link rel="stylesheet" href="/static/css/child.css">
+</head>
+<body>
+  <script>
+    // 已登录则跳转任务页，否则跳转登录页
+    if (API && API.isLoggedIn() && API.getRole() === 'child') {
+      window.location.href = '/child/tasks.html';
+    } else {
+      window.location.href = '/child/login.html';
+    }
+  </script>
+  <script src="/static/js/api.js"></script>
+</body>
+</html>

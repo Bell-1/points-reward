@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>孩子登录 - 积分奖励平台</title>
+  <link rel="stylesheet" href="/static/css/child.css">
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-logo">⭐</div>
+    <h1 class="login-title">积分奖励平台</h1>
+    <div class="login-form">
+      <div class="form-group">
+        <label class="form-label">选择你的账户</label>
+        <select class="form-input" id="childSelect">
+          <option value="">请选择...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">输入 PIN 码</label>
+        <input class="form-input" type="password" id="pinInput" placeholder="请输入4-8位PIN码" maxlength="8">
+      </div>
+      <button class="btn btn--primary btn--block btn--lg" onclick="doLogin()">登录</button>
+    </div>
+    <p style="margin-top: 16px; font-size: 13px; color: var(--text-muted);">
+      <a href="/admin/login.html" style="color: var(--brand);">家长登录 →</a>
+    </p>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script>
+    // 加载孩子列表
+    async function loadChildren() {
+      // 使用管理员 token 获取孩子列表（公开接口用于登录）
+      const res = await API.GET('/api/admin/children');
+      if (res.code === -3) {
+        // 需要 admin token，直接用公开方式获取
+        document.getElementById('childSelect').innerHTML = '<option value="">请让家长先登录后台添加孩子</option>';
+        return;
+      }
+      if (res.code === 0 && res.data && res.data.length > 0) {
+        document.getElementById('childSelect').innerHTML =
+          res.data.map(c => `<option value="${c.id}" data-avatar="${c.avatar || ''}">${c.nickname}</option>`).join('');
+      }
+    }
+
+    // 通过管理员 token 获取孩子列表的替代方案
+    // 如果 admin 未登录，这里会失败，需要另一种方式
+    // 我们加一个公开的孩子列表接口
+    async function loadChildrenPublic() {
+      try {
+        const res = await fetch('/api/auth/children-list');
+        const data = await res.json();
+        if (data.code === 0 && data.data && data.data.length > 0) {
+          document.getElementById('childSelect').innerHTML =
+            data.data.map(c => `<option value="${c.id}">${c.nickname}</option>`).join('');
+        } else {
+          document.getElementById('childSelect').innerHTML = '<option value="">暂无可登录的孩子账户</option>';
+        }
+      } catch(e) {
+        // 如果公开接口不存在，提示需要家长先添加
+        document.getElementById('childSelect').innerHTML = '<option value="">请让家长在后台添加孩子</option>';
+      }
+    }
+
+    async function doLogin() {
+      const childId = parseInt(document.getElementById('childSelect').value);
+      const pin = document.getElementById('pinInput').value.trim();
+      if (!childId) { showToast('请选择账户'); return; }
+      if (!pin) { showToast('请输入PIN码'); return; }
+
+      const res = await API.childLogin(childId, pin);
+      if (res.code === 0) {
+        API.setToken(res.data.token);
+        API.setRole(res.data.role);
+        API.setUserInfo(res.data.userId, res.data.nickname);
+        window.location.href = '/child/tasks.html';
+      } else {
+        showToast(res.msg || '登录失败');
+      }
+    }
+
+    document.getElementById('pinInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') doLogin();
+    });
+
+    loadChildrenPublic();
+  </script>
+</body>
+</html>

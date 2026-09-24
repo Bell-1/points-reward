@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>数据统计 - 积分奖励平台</title>
+  <link rel="stylesheet" href="/static/css/admin.css">
+</head>
+<body>
+  <div class="admin-layout" id="layout"></div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/admin.js"></script>
+  <script>
+    let dateRange = '7d';
+    let childId = '';
+
+    async function init() {
+      if (!await checkAdminAuth()) return;
+      document.getElementById('layout').innerHTML = renderSidebar('stats') + `
+        <div class="main">
+          <div class="page-header">
+            <h1>数据统计</h1>
+            <div class="filter-bar" style="margin-bottom:0;">
+              <select onchange="dateRange=this.value; loadData()">
+                <option value="7d">近 7 天</option>
+                <option value="30d">近 30 天</option>
+                <option value="90d">近 90 天</option>
+              </select>
+              <select id="childFilter" onchange="childId=this.value; loadData()">
+                <option value="">全部孩子</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="stats-grid" id="statsGrid"></div>
+          <div class="chart-container">
+            <h3>积分发放与兑换趋势</h3>
+            <div class="chart-bar-wrap" id="chartBarWrap"></div>
+            <div class="chart-legend">
+              <div class="chart-legend__item"><div class="chart-legend__dot" style="background:var(--brand);"></div>积分发放</div>
+              <div class="chart-legend__item"><div class="chart-legend__dot" style="background:var(--info);"></div>积分兑换</div>
+            </div>
+          </div>
+        </div>`;
+
+      // 加载孩子筛选选项
+      const childRes = await API.adminGetChildren();
+      if (childRes.code === 0 && childRes.data) {
+        const select = document.getElementById('childFilter');
+        childRes.data.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c.id;
+          opt.textContent = c.nickname;
+          select.appendChild(opt);
+        });
+      }
+
+      await loadData();
+    }
+
+    async function loadData() {
+      await Promise.all([loadOverview(), loadTrend()]);
+    }
+
+    async function loadOverview() {
+      const res = await API.adminStatsOverview(dateRange, childId || undefined);
+      if (res.code !== 0) { showToast(res.msg); return; }
+      const d = res.data;
+      const rate = Math.round(d.taskCompletionRate * 100);
+      document.getElementById('statsGrid').innerHTML = `
+        <div class="stat-card">
+          <div class="stat-card__label">总积分发放</div>
+          <div class="stat-card__value" style="color:var(--brand);">${d.totalPointsIssued}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card__label">总兑换次数</div>
+          <div class="stat-card__value" style="color:var(--info);">${d.totalRedeemCount}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card__label">任务完成率</div>
+          <div class="stat-card__value" style="color:${rate >= 60 ? 'var(--success)' : 'var(--warning)'};">${rate}%</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card__label">活跃孩子数</div>
+          <div class="stat-card__value">${d.activeChildCount}</div>
+        </div>`;
+    }
+
+    async function loadTrend() {
+      const res = await API.adminStatsTrend(dateRange, childId || undefined);
+      if (res.code !== 0) { showToast(res.msg); return; }
+      const trend = res.data.trend || [];
+      const wrap = document.getElementById('chartBarWrap');
+
+      if (trend.length === 0) {
+        wrap.innerHTML = `<div class="empty-state"><div class="empty-state__icon">📊</div><div>暂无数据</div></div>`;
+        return;
+      }
+
+      const maxVal = Math.max(...trend.map(t => Math.max(t.pointsIssued, t.pointsRedeemed)), 1);
+      const showLabels = dateRange === '7d'; // 只有7天显示日期标签
+
+      wrap.innerHTML = trend.map(t => {
+        const earnH = Math.round((t.pointsIssued / maxVal) * 170);
+        const spendH = Math.round((t.pointsRedeemed / maxVal) * 170);
+        const label = showLabels ? `<div class="chart-bar-label">${t.date.slice(5)}</div>` : '';
+        const earnTitle = t.pointsIssued > 0 ? `title="发放: ${t.pointsIssued}"` : '';
+        const spendTitle = t.pointsRedeemed > 0 ? `title="兑换: ${t.pointsRedeemed}"` : '';
+        return `<div class="chart-bar-group">
+          <div class="chart-bar-pair">
+            <div class="chart-bar chart-bar--earn" style="height:${earnH}px;" ${earnTitle}></div>
+            <div class="chart-bar chart-bar--spend" style="height:${spendH}px;" ${spendTitle}></div>
+          </div>
+          ${label}
+        </div>`;
+      }).join('');
+    }
+
+    init();
+  </script>
+</body>
+</html>

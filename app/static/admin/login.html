@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>家长登录 - 积分奖励平台</title>
+  <link rel="stylesheet" href="/static/css/admin.css">
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-box">
+      <h1>积分奖励平台</h1>
+      <p>家长管理后台</p>
+      <div class="form-group">
+        <label class="form-label">用户名</label>
+        <input class="form-input" type="text" id="usernameInput" placeholder="请输入用户名" value="">
+      </div>
+      <div class="form-group">
+        <label class="form-label">密码</label>
+        <input class="form-input" type="password" id="passwordInput" placeholder="请输入密码">
+      </div>
+      <button class="btn btn--primary btn--block" style="margin-top:8px;" onclick="doLogin()">登录</button>
+      <p style="text-align:center; margin-top:16px; font-size:13px; color:var(--text-muted);">
+        <a href="/child/login.html" style="color:var(--brand);">孩子登录 →</a>
+      </p>
+      <p style="text-align:center; margin-top:8px; font-size:12px; color:var(--text-light);">
+        默认账户: admin / admin123
+      </p>
+    </div>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script>
+    async function doLogin() {
+      const username = document.getElementById('usernameInput').value.trim();
+      const password = document.getElementById('passwordInput').value;
+      if (!username || !password) { showToast('请输入用户名和密码'); return; }
+
+      const res = await API.adminLogin(username, password);
+      if (res.code === 0) {
+        API.setToken(res.data.token);
+        API.setRole(res.data.role);
+        API.setUserInfo(res.data.userId, res.data.nickname);
+        window.location.href = '/admin/stats.html';
+      } else {
+        showToast(res.msg || '登录失败');
+      }
+    }
+
+    document.getElementById('passwordInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') doLogin();
+    });
+  </script>
+</body>
+</html>
