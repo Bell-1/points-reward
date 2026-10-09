@@ -21,6 +21,7 @@ services:
       - "7888:7888"
     volumes:
       - ./frontend:/app
+      - /app/node_modules
     environment:
       - VITE_API_BASE=/api
       - VITE_PROXY_TARGET=http://backend:8000

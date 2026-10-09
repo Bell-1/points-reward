@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "uploads"
     MAX_IMAGE_SIZE_MB: int = 2
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 settings = Settings()
